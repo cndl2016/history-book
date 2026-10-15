@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.historybook.system.mapper.TjGubenMapper">
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjGubenPage" id="TjGubenPageResult">
+		<id     property="pageId"    column="page_id"    />
+		<result property="imageName" column="image_name" />
+		<result property="prevName"  column="prev_name"  />
+		<result property="nextName"  column="next_name"  />
+		<result property="hasPrev"   column="has_prev"   />
+		<result property="hasNext"   column="has_next"   />
+		<result property="localFile" column="local_file" />
+		<result property="fileSize"  column="file_size"  />
+		<result property="createTime" column="create_time" />
+	</resultMap>
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjGubenAnchor" id="TjGubenAnchorResult">
+		<id     property="anchorId"   column="anchor_id"   />
+		<result property="tongjianId" column="tongjian_id" />
+		<result property="startIndex" column="start_index" />
+		<result property="imageName"  column="image_name"  />
+		<result property="boxTop"     column="box_top"     />
+		<result property="boxLeft"    column="box_left"    />
+		<result property="boxWidth"   column="box_width"   />
+		<result property="boxHeight"  column="box_height"  />
+		<result property="createTime" column="create_time" />
+	</resultMap>
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjContent" id="TjGubenContentResult">
+		<id     property="contentId"  column="content_id"  />
+		<result property="tongjianId" column="tongjian_id" />
+		<result property="number"     column="number"      />
+		<result property="original"   column="original"    />
+		<result property="simplified" column="simplified"  />
+	</resultMap>
+
+	<select id="selectPage" resultMap="TjGubenPageResult">
+		select page_id, image_name, prev_name, next_name, has_prev, has_next, local_file, file_size, create_time
+		from tj_guben_page where image_name = #{imageName}
+	</select>
+
+	<insert id="insertPage" parameterType="com.historybook.system.entity.tongjian.TjGubenPage" useGeneratedKeys="true" keyProperty="pageId">
+		insert into tj_guben_page (image_name, prev_name, next_name, has_prev, has_next, local_file, file_size, create_time)
+		values (#{imageName}, #{prevName}, #{nextName}, #{hasPrev}, #{hasNext}, #{localFile}, #{fileSize}, now())
+	</insert>
+
+	<update id="updatePageNavFlags" parameterType="com.historybook.system.entity.tongjian.TjGubenPage">
+		update tj_guben_page
+		set has_prev = #{hasPrev}, has_next = #{hasNext}
+		where image_name = #{imageName}
+	</update>
+
+	<update id="updatePageLinks">
+		update tj_guben_page
+		set prev_name = #{prevName}, next_name = #{nextName}
+		where image_name = #{imageName}
+	</update>
+
+	<update id="updatePageLocal">
+		update tj_guben_page
+		set local_file = #{localFile}, file_size = #{fileSize}
+		where image_name = #{imageName}
+	</update>
+
+	<select id="selectAnchor" resultMap="TjGubenAnchorResult">
+		select anchor_id, tongjian_id, start_index, image_name, box_top, box_left, box_width, box_height, create_time
+		from tj_guben_anchor where tongjian_id = #{tongjianId} and start_index = #{startIndex}
+	</select>
+
+	<insert id="insertAnchor" parameterType="com.historybook.system.entity.tongjian.TjGubenAnchor" useGeneratedKeys="true" keyProperty="anchorId">
+		insert into tj_guben_anchor (tongjian_id, start_index, image_name, box_top, box_left, box_width, box_height, create_time)
+		values (#{tongjianId}, #{startIndex}, #{imageName}, #{boxTop}, #{boxLeft}, #{boxWidth}, #{boxHeight}, now())
+	</insert>
+
+	<select id="selectUncachedParagraphs" resultMap="TjGubenContentResult">
+		select c.content_id, c.tongjian_id, c.number, c.original, c.simplified
+		from tj_content c
+		where c.tongjian_id is not null
+		  and not exists (
+		      select 1 from tj_guben_anchor a
+		      where a.tongjian_id = c.tongjian_id and a.start_index = coalesce(c.number, 1) - 1
+		  )
+		order by c.content_id
+	</select>
+
+	<select id="countAnchors" resultType="int">
+		select count(1) from tj_guben_anchor
+	</select>
+
+	<select id="countPages" resultType="int">
+		select count(1) from tj_guben_page
+	</select>
+
+	<select id="countLocalPages" resultType="int">
+		select count(1) from tj_guben_page where local_file is not null
+	</select>
+
+	<select id="sumLocalBytes" resultType="long">
+		select coalesce(sum(file_size), 0) from tj_guben_page where local_file is not null
+	</select>
+
+</mapper>

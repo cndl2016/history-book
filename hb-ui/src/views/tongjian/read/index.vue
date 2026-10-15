@@ -78,6 +78,7 @@
                 <el-tooltip content="标记读到这里" placement="top">
                   <el-icon class="meta-icon" @click="markProgress(item)"><Flag /></el-icon>
                 </el-tooltip>
+                <span class="guben-btn" @click="openGuben(item)">古本</span>
                 <template v-if="item.tags">
                   <span class="meta-sep">标签</span>
                   <span v-for="tag in item.tags.split(',')" :key="tag" class="tag-chip">{{ tag }}</span>
@@ -106,12 +107,16 @@
         </div>
       </el-scrollbar>
     </div>
+
+    <!-- 古本查看器 -->
+    <GubenViewer v-model:visible="gubenVisible" :paragraph="gubenParagraph" />
   </div>
 </template>
 
 <script setup name="TjRead">
 import { getCatalogTree, getReign, listByReign, addFavorite, delFavorite, recordHistory } from '@/api/tongjian'
 import { Star, StarFilled, Flag } from '@element-plus/icons-vue'
+import GubenViewer from './GubenViewer.vue'
 
 const route = useRoute()
 const { proxy } = getCurrentInstance()
@@ -130,6 +135,10 @@ const targetNumber = ref(null)
 const showSimplified = ref(true)
 const showTranslation = ref(true)
 const showNotes = ref(true)
+
+// 古本查看器
+const gubenVisible = ref(false)
+const gubenParagraph = ref(null)
 
 const currentIndex = computed(() => reignSequence.value.findIndex(r => currentReign.value && r.reignId === currentReign.value.reignId))
 const prevReign = computed(() => currentIndex.value > 0 ? reignSequence.value[currentIndex.value - 1] : null)
@@ -244,6 +253,16 @@ function markProgress(item) {
   recordHistory(currentReign.value.reignId, item.number).then(() => {
     proxy.$modal.msgSuccess(`已记录进度：第 ${item.number} 段`)
   })
+}
+
+/** 打开古本：段落的源站ID + 段内序号（0基）+ 原文用于扫描页定位 */
+function openGuben(item) {
+  gubenParagraph.value = {
+    tongjianId: item.tongjianId,
+    startIndex: (item.number || 1) - 1,
+    selectedText: item.original || item.simplified || ''
+  }
+  gubenVisible.value = true
 }
 
 onMounted(() => {
@@ -443,6 +462,20 @@ onMounted(() => {
   font-size: 12px;
   color: #a8a29e;
   margin-left: 6px;
+}
+.guben-btn {
+  font-size: 12px;
+  color: #b45309;
+  border: 1px solid #d97706;
+  border-radius: 3px;
+  padding: 0 8px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 18px;
+}
+.guben-btn:hover {
+  background: #b45309;
+  color: #fff;
 }
 .tag-chip {
   font-size: 12px;

@@ -115,3 +115,36 @@ export function stopSync() {
     method: 'post'
   })
 }
+
+// 古本查看（anchor 定位 / page 翻页）
+export function viewGuben(data) {
+  return request({
+    url: '/tongjian/guben/view',
+    method: 'post',
+    data
+  })
+}
+
+// 古本回填状态
+export function getGubenCrawlStatus() {
+  return request({
+    url: '/tongjian/guben/crawl/status',
+    method: 'get'
+  })
+}
+
+// 启动古本回填
+export function startGubenCrawl() {
+  return request({
+    url: '/tongjian/guben/crawl/start',
+    method: 'post'
+  })
+}
+
+// 停止古本回填
+export function stopGubenCrawl() {
+  return request({
+    url: '/tongjian/guben/crawl/stop',
+    method: 'post'
+  })
+}
