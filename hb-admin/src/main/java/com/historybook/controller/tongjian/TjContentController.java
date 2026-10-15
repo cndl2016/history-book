@@ -60,4 +60,17 @@ public class TjContentController extends BaseController
         List<TjContent> list = contentService.searchList(query);
         return getDataTable(list);
     }
+
+    /**
+     * 按标签查关联段落（点击段落标签弹出）
+     */
+    @RequiresPermissions("tongjian:read:list")
+    @GetMapping("/byTag")
+    @ApiOperation(value = "按标签查关联段落")
+    public TableDataInfo byTag(String tag)
+    {
+        startPage();
+        List<TjContent> list = contentService.selectByTag(tag);
+        return getDataTable(list);
+    }
 }

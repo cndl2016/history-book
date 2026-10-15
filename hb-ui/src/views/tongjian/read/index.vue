@@ -81,7 +81,12 @@
                 <span class="guben-btn" @click="openGuben(item)">古本</span>
                 <template v-if="item.tags">
                   <span class="meta-sep">标签</span>
-                  <span v-for="tag in item.tags.split(',')" :key="tag" class="tag-chip">{{ tag }}</span>
+                  <span
+                    v-for="tag in item.tags.split(',')"
+                    :key="tag"
+                    class="tag-chip tag-chip-link"
+                    @click="openTagDialog(tag)"
+                  >{{ tag }}</span>
                 </template>
                 <span class="para-number">{{ item.number }} / {{ contents.length }}</span>
               </div>
@@ -110,6 +115,8 @@
 
     <!-- 古本查看器 -->
     <GubenViewer v-model:visible="gubenVisible" :paragraph="gubenParagraph" />
+    <!-- 标签关联段落 -->
+    <TagDialog v-model="tagDialogVisible" v-model:tag="currentTag" @locate="locateParagraph" />
   </div>
 </template>
 
@@ -117,6 +124,7 @@
 import { getCatalogTree, getReign, listByReign, addFavorite, delFavorite, recordHistory } from '@/api/tongjian'
 import { Star, StarFilled, Flag } from '@element-plus/icons-vue'
 import GubenViewer from './GubenViewer.vue'
+import TagDialog from './TagDialog.vue'
 
 const route = useRoute()
 const { proxy } = getCurrentInstance()
@@ -139,6 +147,36 @@ const showNotes = ref(true)
 // 古本查看器
 const gubenVisible = ref(false)
 const gubenParagraph = ref(null)
+
+// 标签关联段落对话框
+const tagDialogVisible = ref(false)
+const currentTag = ref('')
+/** 跨纪年定位时待跳转的段落号 */
+let pendingNumber = null
+
+function openTagDialog(tag) {
+  currentTag.value = tag
+  tagDialogVisible.value = true
+}
+
+/** 从标签对话框定位到段落：同纪年直接滚动，跨纪年先加载再滚动 */
+function locateParagraph(item) {
+  if (currentReign.value && String(item.reignId) === String(currentReign.value.reignId)) {
+    scrollToParagraph(item.number)
+    return
+  }
+  pendingNumber = item.number
+  openReign({ reignId: item.reignId })
+}
+
+function scrollToParagraph(num) {
+  if (!num) return
+  nextTick(() => {
+    targetNumber.value = num
+    const el = document.getElementById('para-' + num)
+    el && el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
 
 const currentIndex = computed(() => reignSequence.value.findIndex(r => currentReign.value && r.reignId === currentReign.value.reignId))
 const prevReign = computed(() => currentIndex.value > 0 ? reignSequence.value[currentIndex.value - 1] : null)
@@ -223,14 +261,11 @@ function openReign(reign) {
     treeRef.value && treeRef.value.setCurrentKey('r' + reign.reignId)
     // 记录阅读进度（打开即记录，进度由“标记读到这里”更新）
     recordHistory(reign.reignId, 0)
-    // 从搜索/收藏跳入时定位段落
-    const num = Number(route.query.number)
+    // 从搜索/收藏/标签定位跳入时定位段落
+    const num = pendingNumber || Number(route.query.number)
+    pendingNumber = null
     if (num) {
-      nextTick(() => {
-        targetNumber.value = num
-        const el = document.getElementById('para-' + num)
-        el && el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      })
+      scrollToParagraph(num)
     }
   }).catch(() => { loading.value = false })
 }
@@ -483,6 +518,14 @@ onMounted(() => {
   background: #f1ede5;
   border-radius: 3px;
   padding: 1px 7px;
+}
+.tag-chip-link {
+  cursor: pointer;
+  transition: all .15s;
+}
+.tag-chip-link:hover {
+  color: #b45309;
+  background: rgba(180, 83, 9, .1);
 }
 .para-number {
   margin-left: auto;

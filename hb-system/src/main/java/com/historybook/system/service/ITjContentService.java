@@ -17,4 +17,7 @@ public interface ITjContentService
 
     /** 全文搜索（分页由 PageHelper 处理） */
     List<TjContent> searchList(TjContent query);
+
+    /** 按标签查关联段落（精确匹配逗号分隔的标签，分页由 PageHelper 处理） */
+    List<TjContent> selectByTag(String tag);
 }

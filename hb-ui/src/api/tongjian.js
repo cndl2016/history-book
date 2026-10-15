@@ -42,6 +42,15 @@ export function searchContent(query) {
   })
 }
 
+// 按标签查关联段落
+export function listContentByTag(query) {
+  return request({
+    url: '/tongjian/content/byTag',
+    method: 'get',
+    params: query
+  })
+}
+
 // 我的收藏列表
 export function listFavorite(query) {
   return request({

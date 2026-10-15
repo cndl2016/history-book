@@ -20,6 +20,9 @@ public interface TjContentMapper
     /** 全文搜索（原文/简体/译文/标签） */
     List<TjContent> searchList(TjContent query);
 
+    /** 按标签查关联段落（精确匹配逗号分隔标签） */
+    List<TjContent> selectByTag(@Param("tag") String tag);
+
     int insertContent(TjContent content);
 
     int insertContentBatch(@Param("list") List<TjContent> list);

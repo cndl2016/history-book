@@ -49,4 +49,10 @@ public class TjContentServiceImpl implements ITjContentService
     {
         return contentMapper.searchList(query);
     }
+
+    @Override
+    public List<TjContent> selectByTag(String tag)
+    {
+        return contentMapper.selectByTag(tag);
+    }
 }

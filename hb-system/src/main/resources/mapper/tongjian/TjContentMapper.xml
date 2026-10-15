@@ -65,6 +65,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		order by c.volume_id, c.reign_id, c.number
 	</select>
 
+	<select id="selectByTag" resultMap="TjContentResult">
+		<include refid="selectContentVo"/>
+		where c.tags is not null
+		  and concat(',', c.tags, ',') like concat('%,', #{tag}, ',%')
+		order by c.volume_id, c.reign_id, c.number
+	</select>
+
 	<insert id="insertContent" parameterType="com.historybook.system.entity.tongjian.TjContent" useGeneratedKeys="true" keyProperty="contentId">
 		insert into tj_content (tongjian_id, reign_id, volume_id, number, original, simplified, translation, notes, tags, source_url, create_time)
 		values (#{tongjianId}, #{reignId}, #{volumeId}, #{number}, #{original}, #{simplified}, #{translation}, #{notes}, #{tags}, #{sourceUrl}, now())
