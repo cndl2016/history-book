@@ -289,7 +289,10 @@ function handleRefreshCache() {
   });
 }
 
-// 页面初次挂载或在缓存中被激活时调用
+onMounted(()=>{
+  getList();
+})
+
 onActivated(() =>{
   getList();
 })
