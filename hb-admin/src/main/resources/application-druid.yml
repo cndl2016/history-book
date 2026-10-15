@@ -1,0 +1,31 @@
+# 数据源配置
+spring:
+    datasource:
+        druid:
+            stat-view-servlet:
+                enabled: true
+                loginUsername: admin
+                loginPassword: 123456
+        dynamic:
+            druid:
+                initial-size: 5
+                min-idle: 5
+                maxActive: 20
+                maxWait: 60000
+                timeBetweenEvictionRunsMillis: 60000
+                minEvictableIdleTimeMillis: 300000
+                validationQuery: SELECT 1
+                testWhileIdle: true
+                testOnBorrow: false
+                testOnReturn: false
+                poolPreparedStatements: true
+                maxPoolPreparedStatementPerConnectionSize: 20
+                filters: stat,slf4j
+                connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
+            datasource:
+                # 主库数据源（H2 嵌入式文件库，首次启动自动执行 sql/schema.sql 与 sql/data.sql 初始化）
+                master:
+                    driver-class-name: org.h2.Driver
+                    url: jdbc:h2:file:./db/history-book;AUTO_SERVER=TRUE
+                    username: sa
+                    password: ''
