@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.historybook.system.mapper.TjHistoryMapper">
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjHistory" id="TjHistoryResult">
+		<id     property="historyId"    column="history_id"    />
+		<result property="userId"       column="user_id"       />
+		<result property="reignId"      column="reign_id"      />
+		<result property="lastNumber"   column="last_number"   />
+		<result property="accessTime"   column="access_time"   />
+		<result property="emperorName"  column="emperor_name"  />
+		<result property="reignName"    column="reign_name"    />
+		<result property="yearAnno"     column="year_anno"     />
+		<result property="volumeId"     column="volume_id"     />
+		<result property="volumeTitle"  column="volume_title"  />
+	</resultMap>
+
+	<select id="selectByUserAndReign" resultMap="TjHistoryResult">
+		select history_id, user_id, reign_id, last_number, access_time
+		from tj_history where user_id = #{userId} and reign_id = #{reignId}
+	</select>
+
+	<insert id="insertHistory" parameterType="com.historybook.system.entity.tongjian.TjHistory" useGeneratedKeys="true" keyProperty="historyId">
+		insert into tj_history (user_id, reign_id, last_number, access_time)
+		values (#{userId}, #{reignId}, #{lastNumber}, now())
+	</insert>
+
+	<update id="updateHistory" parameterType="com.historybook.system.entity.tongjian.TjHistory">
+		update tj_history set last_number = #{lastNumber}, access_time = now()
+		where history_id = #{historyId}
+	</update>
+
+	<select id="selectHistoryList" resultMap="TjHistoryResult">
+		select h.history_id, h.user_id, h.reign_id, h.last_number, h.access_time,
+		       r.emperor_name, r.reign_name, r.year_anno, r.volume_id,
+		       v.title as volume_title
+		from tj_history h
+		left join tj_reign r on r.reign_id = h.reign_id
+		left join tj_volume v on v.volume_id = r.volume_id
+		where h.user_id = #{userId}
+		order by h.access_time desc
+	</select>
+
+	<delete id="deleteHistoryByIds">
+		delete from tj_history where user_id = #{userId} and history_id in
+		<foreach collection="historyIds" item="id" open="(" separator="," close=")">
+			#{id}
+		</foreach>
+	</delete>
+
+</mapper>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.historybook.system.mapper.TjFavoriteMapper">
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjFavorite" id="TjFavoriteResult">
+		<id     property="favoriteId"  column="favorite_id"  />
+		<result property="userId"      column="user_id"      />
+		<result property="contentId"   column="content_id"   />
+		<result property="createTime"  column="create_time"  />
+		<association property="content" javaType="com.historybook.system.entity.tongjian.TjContent">
+			<result property="contentId"    column="content_id"   />
+			<result property="reignId"      column="reign_id"     />
+			<result property="volumeId"     column="volume_id"    />
+			<result property="number"       column="number"       />
+			<result property="original"     column="original"     />
+			<result property="simplified"   column="simplified"   />
+			<result property="translation"  column="translation"  />
+			<result property="tags"         column="tags"         />
+			<result property="reignTitle"   column="reign_title"  />
+			<result property="volumeTitle"  column="volume_title" />
+		</association>
+	</resultMap>
+
+	<insert id="insertFavorite" parameterType="com.historybook.system.entity.tongjian.TjFavorite" useGeneratedKeys="true" keyProperty="favoriteId">
+		insert into tj_favorite (user_id, content_id, create_time)
+		values (#{userId}, #{contentId}, now())
+	</insert>
+
+	<delete id="deleteFavorite">
+		delete from tj_favorite where user_id = #{userId} and content_id = #{contentId}
+	</delete>
+
+	<select id="countByUserAndContent" resultType="int">
+		select count(1) from tj_favorite where user_id = #{userId} and content_id = #{contentId}
+	</select>
+
+	<select id="selectFavoriteList" resultMap="TjFavoriteResult">
+		select f.favorite_id, f.user_id, f.content_id, f.create_time,
+		       c.reign_id, c.volume_id, c.number, c.original, c.simplified, c.translation, c.tags,
+		       concat_ws('', r.emperor_name, r.reign_name, r.year_anno) as reign_title,
+		       v.title as volume_title
+		from tj_favorite f
+		join tj_content c on c.content_id = f.content_id
+		left join tj_reign r on r.reign_id = c.reign_id
+		left join tj_volume v on v.volume_id = c.volume_id
+		where f.user_id = #{userId}
+		order by f.favorite_id desc
+	</select>
+
+	<select id="selectFavoredContentIds" resultType="java.lang.Long">
+		select f.content_id from tj_favorite f
+		join tj_content c on c.content_id = f.content_id
+		where f.user_id = #{userId} and c.reign_id = #{reignId}
+	</select>
+
+</mapper>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.historybook.system.mapper.TjCatalogMapper">
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjVolume" id="TjVolumeResult">
+		<id     property="volumeId"    column="volume_id"    />
+		<result property="tongjianId"  column="tongjian_id"  />
+		<result property="title"       column="title"        />
+		<result property="ji"          column="ji"           />
+		<result property="sortOrder"   column="sort_order"   />
+	</resultMap>
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjReign" id="TjReignResult">
+		<id     property="reignId"      column="reign_id"      />
+		<result property="tongjianId"   column="tongjian_id"   />
+		<result property="volumeId"     column="volume_id"     />
+		<result property="emperorName"  column="emperor_name"  />
+		<result property="reignName"    column="reign_name"    />
+		<result property="yearAnno"     column="year_anno"     />
+		<result property="yearInt"      column="year_int"      />
+		<result property="sortOrder"    column="sort_order"    />
+		<result property="synced"       column="synced"        />
+		<result property="volumeTitle"  column="volume_title"  />
+		<result property="ji"           column="ji"            />
+	</resultMap>
+
+	<select id="selectVolumeList" resultMap="TjVolumeResult">
+		select volume_id, tongjian_id, title, ji, sort_order from tj_volume order by sort_order
+	</select>
+
+	<select id="selectReignList" resultMap="TjReignResult">
+		select reign_id, tongjian_id, volume_id, emperor_name, reign_name, year_anno, year_int, sort_order, synced
+		from tj_reign order by sort_order
+	</select>
+
+	<select id="selectReignById" resultMap="TjReignResult">
+		select r.reign_id, r.tongjian_id, r.volume_id, r.emperor_name, r.reign_name, r.year_anno, r.year_int, r.sort_order, r.synced,
+		       v.title as volume_title, v.ji as ji
+		from tj_reign r left join tj_volume v on v.volume_id = r.volume_id
+		where r.reign_id = #{reignId}
+	</select>
+
+	<select id="selectVolumeByTongjianId" resultMap="TjVolumeResult">
+		select volume_id, tongjian_id, title, ji, sort_order from tj_volume where tongjian_id = #{tongjianId}
+	</select>
+
+	<select id="selectReignByTongjianId" resultMap="TjReignResult">
+		select reign_id, tongjian_id, volume_id, emperor_name, reign_name, year_anno, year_int, sort_order, synced
+		from tj_reign where tongjian_id = #{tongjianId}
+	</select>
+
+	<insert id="insertVolume" parameterType="com.historybook.system.entity.tongjian.TjVolume" useGeneratedKeys="true" keyProperty="volumeId">
+		insert into tj_volume (tongjian_id, title, ji, sort_order)
+		values (#{tongjianId}, #{title}, #{ji}, #{sortOrder})
+	</insert>
+
+	<update id="updateVolume" parameterType="com.historybook.system.entity.tongjian.TjVolume">
+		update tj_volume
+		set title = #{title}, ji = #{ji}, sort_order = #{sortOrder}
+		where volume_id = #{volumeId}
+	</update>
+
+	<insert id="insertReign" parameterType="com.historybook.system.entity.tongjian.TjReign" useGeneratedKeys="true" keyProperty="reignId">
+		insert into tj_reign (tongjian_id, volume_id, emperor_name, reign_name, year_anno, year_int, sort_order, synced)
+		values (#{tongjianId}, #{volumeId}, #{emperorName}, #{reignName}, #{yearAnno}, #{yearInt}, #{sortOrder}, '0')
+	</insert>
+
+	<update id="updateReign" parameterType="com.historybook.system.entity.tongjian.TjReign">
+		update tj_reign
+		set volume_id = #{volumeId}, emperor_name = #{emperorName}, reign_name = #{reignName},
+		    year_anno = #{yearAnno}, year_int = #{yearInt}, sort_order = #{sortOrder}
+		where reign_id = #{reignId}
+	</update>
+
+	<update id="markReignSynced">
+		update tj_reign set synced = '1' where reign_id = #{reignId}
+	</update>
+
+	<select id="countReigns" resultType="int">
+		select count(1) from tj_reign
+	</select>
+
+	<select id="countSyncedReigns" resultType="int">
+		select count(1) from tj_reign where synced = '1'
+	</select>
+
+</mapper>
