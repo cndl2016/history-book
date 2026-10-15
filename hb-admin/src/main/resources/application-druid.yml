@@ -24,8 +24,9 @@ spring:
                 connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
             datasource:
                 # 主库数据源（H2 嵌入式文件库，首次启动自动执行 sql/schema.sql 与 sql/data.sql 初始化）
+                # 使用绝对路径，避免工作目录不同导致在别处重复创建 db（IDEA 启动工作目录为项目根，命令行在 hb-admin 下运行会生成 hb-admin/db）
                 master:
                     driver-class-name: org.h2.Driver
-                    url: jdbc:h2:file:./db/history-book;AUTO_SERVER=TRUE
+                    url: jdbc:h2:file:D:/project/history-book/db/history-book;AUTO_SERVER=TRUE
                     username: sa
                     password: ''

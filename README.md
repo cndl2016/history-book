@@ -7,7 +7,7 @@
 | 端 | 技术 |
 |---|---|
 | 后端 | Spring Boot 2.6.15 + Java 17 + MyBatis / MyBatis-Plus + PageHelper + Spring Security(JWT) |
-| 数据库 | H2 2.2.224（文件模式 `./db/history-book`，首次启动自动建表和初始化数据） |
+| 数据库 | H2 2.2.224（文件模式 `D:/project/history-book/db/history-book`（绝对路径），首次启动自动建表和初始化数据） |
 | 前端 | Vue 3 + Vite 5 + Element Plus + Pinia |
 
 ## 项目结构
@@ -32,9 +32,9 @@ mvn clean install -DskipTests
 java -jar hb-admin/target/hb-admin.jar
 ```
 
-首次启动自动在 `./db/` 下创建 H2 数据库并执行 `hb-admin/src/main/resources/sql/schema.sql`、`data.sql` 初始化（脚本幂等，重复启动不会重复写入）。
+首次启动自动在项目根目录 `db/` 下创建 H2 数据库并执行 `hb-admin/src/main/resources/sql/schema.sql`、`data.sql` 初始化（脚本幂等，重复启动不会重复写入）。
 
-- H2 控制台：`http://localhost:1081/h2-console`（JDBC URL：`jdbc:h2:file:./db/history-book`，用户 `sa`，空密码）
+- H2 控制台：`http://localhost:1081/h2-console`（JDBC URL：`jdbc:h2:file:D:/project/history-book/db/history-book`，用户 `sa`，空密码）
 
 ### 前端（端口 80）
 

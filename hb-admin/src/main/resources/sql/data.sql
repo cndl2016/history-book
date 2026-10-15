@@ -5,9 +5,10 @@ SELECT * FROM (VALUES
 (1,'主框架页-默认皮肤样式名称','sys.index.skinName','skin-blue','Y','manager',CURRENT_TIMESTAMP,'',null,'蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
 (2,'用户管理-账号初始密码','sys.user.initPassword','123456','Y','manager',CURRENT_TIMESTAMP,'',null,'初始化密码 123456'),
 (3,'主框架页-侧边栏主题','sys.index.sideTheme','theme-dark','Y','manager',CURRENT_TIMESTAMP,'',null,'深色主题theme-dark，浅色主题theme-light'),
-(4,'账号自助-是否开启用户注册功能','sys.account.registerUser','false','Y','manager',CURRENT_TIMESTAMP,'',null,'是否开启注册用户功能（true开启，false关闭）')
+(4,'账号自助-是否开启用户注册功能','sys.account.registerUser','false','Y','manager',CURRENT_TIMESTAMP,'',null,'是否开启注册用户功能（true开启，false关闭）'),
+(5,'账号自助-是否开启验证码功能','sys.account.captchaEnabled','true','Y','manager',CURRENT_TIMESTAMP,'',null,'是否开启登录验证码功能（true开启，false关闭）')
 ) AS V(CONFIG_ID,CONFIG_NAME,CONFIG_KEY,CONFIG_VALUE,CONFIG_TYPE,CREATE_BY,CREATE_TIME,UPDATE_BY,UPDATE_TIME,REMARK)
-WHERE NOT EXISTS (SELECT 1 FROM "SYS_CONFIG");
+WHERE NOT EXISTS (SELECT 1 FROM "SYS_CONFIG" S WHERE S.CONFIG_KEY = V.CONFIG_KEY);
 
 INSERT INTO "SYS_DEPT"(DEPT_ID,PARENT_ID,ANCESTORS,DEPT_NAME,ORDER_NUM,LEADER,PHONE,EMAIL,STATUS,DEL_FLAG,CREATE_BY,CREATE_TIME,UPDATE_BY,UPDATE_TIME,DEPT_NAME_EN)
 SELECT * FROM (VALUES
