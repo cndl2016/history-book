@@ -25,14 +25,23 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 读通鉴-内容同步 服务层处理
  *
  * 迁移自 Dutongjian 项目的 tongjian_sync.py：
- * 目录 -> 纪年 -> 正文段落，限速请求、429 退避重试、按纪年 checkpoint 断点续传。
+ * 目录 -> 纪年 -> 正文段落，限速请求、429 退避、按纪年 checkpoint 断点续传。
  * checkpoint 持久化在 TJ_REIGN.SYNCED 与 TJ_SYNC_STATE，重启后可继续。
+ *
+ * 性能策略：固定线程池并发拉取（WORKERS 个），所有线程共享一个全局限速器
+ * （两次请求至少间隔 MIN_INTERVAL_MS），触发 429 时按 Retry-After 全局暂停。
  */
 @Service
 public class TjSyncServiceImpl implements ITjSyncService
@@ -42,16 +51,43 @@ public class TjSyncServiceImpl implements ITjSyncService
     /** 公开数据源（dutongjian.com 的公开只读接口，不登录、不绕权限） */
     private static final String BASE_URL = "https://www.dutongjian.com";
 
-    /** 每次请求最小间隔（毫秒），与原项目一致的限速策略 */
-    private static final long MIN_INTERVAL_MS = 5000L;
+    /**
+     * 请求标识：源站按 UA 限流，自定义 UA 高频访问会被定向 429 封禁，浏览器 UA 不受限。
+     * 配合下方的自适应限速，保持对源站的礼貌访问。
+     */
+    private static final String USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+    /** 并发拉取线程数（增大可提高速度，同时对源站压力也增大，请适度调整） */
+    private static final int WORKERS = 8;
+
+    /** 全局两次请求最小间隔（毫秒），所有并发线程共享；触发 429 会自动加倍，成功后缓慢回落 */
+    private static final long MIN_INTERVAL_MS = 1000L;
+
+    /** 429 退避时间隔上限（毫秒） */
+    private static final long MAX_INTERVAL_MS = 10000L;
 
     private static final int MAX_RETRY = 3;
+
+    /** 进度落库的最小间隔（毫秒），避免每个纪年都写一次状态表 */
+    private static final long STATE_SAVE_INTERVAL_MS = 800L;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     private volatile boolean stopRequested = false;
 
     private volatile long lastRequestAt = 0L;
+
+    /** 自适应请求间隔：429 时加倍（至 MAX_INTERVAL_MS），成功时缓慢回落至 MIN_INTERVAL_MS */
+    private volatile long intervalMs = MIN_INTERVAL_MS;
+
+    /** 429 限流时的全局暂停截止时间，所有并发线程的限速器都会等待到该时刻 */
+    private volatile long globalHoldUntil = 0L;
+
+    /** 429 暂停时长（毫秒）：连续触发 429 时指数增长（15s 起，封顶 120s），请求成功后复位 */
+    private volatile long holdMs = 15000L;
+
+    private volatile long lastStateSaveAt = 0L;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
@@ -115,6 +151,7 @@ public class TjSyncServiceImpl implements ITjSyncService
 
     private void runSync()
     {
+        ExecutorService pool = null;
         try
         {
             saveState("1", "正在获取目录…");
@@ -123,31 +160,88 @@ public class TjSyncServiceImpl implements ITjSyncService
 
             List<TjReign> all = catalogMapper.selectReignList();
             int total = all.size();
+            List<TjReign> pending = new ArrayList<>();
+            int already = 0;
             for (TjReign reign : all)
             {
-                if (stopRequested)
-                {
-                    saveState("2", "已手动停止，已完成 " + catalogMapper.countSyncedReigns() + "/" + total + " 个纪年");
-                    return;
-                }
                 if ("1".equals(reign.getSynced()))
                 {
-                    continue;
+                    already++;
                 }
-                try
+                else
                 {
-                    syncReign(reign);
-                    saveState("1", "已同步 " + reign.getVolumeTitle() + " " + reign.getEmperorName() + reign.getReignName()
-                            + "（" + catalogMapper.countSyncedReigns() + "/" + total + "）");
-                }
-                catch (Exception e)
-                {
-                    log.error("同步纪年失败: {}", reign.getTongjianId(), e);
-                    saveState("2", "同步失败：" + e.getMessage() + "，已完成 " + catalogMapper.countSyncedReigns() + "/" + total + " 个纪年，可重新开始继续");
-                    return;
+                    pending.add(reign);
                 }
             }
-            saveState("0", "全部完成，共 " + total + " 个纪年、" + contentMapper.countContents() + " 段正文");
+            final int alreadySynced = already;
+            AtomicInteger done = new AtomicInteger(0);
+            AtomicInteger contentCount = new AtomicInteger(contentMapper.countContents());
+            AtomicReference<String> firstError = new AtomicReference<>();
+
+            pool = Executors.newFixedThreadPool(WORKERS, r ->
+            {
+                Thread t = new Thread(r, "tj-sync-worker");
+                t.setDaemon(true);
+                return t;
+            });
+            List<Future<?>> futures = new ArrayList<>();
+            for (TjReign reign : pending)
+            {
+                futures.add(pool.submit(() ->
+                {
+                    if (stopRequested || firstError.get() != null)
+                    {
+                        return;
+                    }
+                    try
+                    {
+                        int delta = syncReign(reign);
+                        int contents = contentCount.addAndGet(delta);
+                        int finished = alreadySynced + done.incrementAndGet();
+                        saveProgressThrottled("1", "已同步 " + reign.getVolumeTitle() + " "
+                                + reign.getEmperorName() + reign.getReignName()
+                                + "（" + finished + "/" + total + "）", total, finished, contents);
+                    }
+                    catch (Exception e)
+                    {
+                        log.error("同步纪年失败: {}", reign.getTongjianId(), e);
+                        firstError.compareAndSet(null, e.getMessage());
+                    }
+                }));
+            }
+            // 等待全部完成；手动停止或首个失败时取消排队任务（进行中的任务会正常收尾，保证 checkpoint 完整）
+            pool.shutdown();
+            while (!pool.awaitTermination(500, TimeUnit.MILLISECONDS))
+            {
+                if (stopRequested || firstError.get() != null)
+                {
+                    for (Future<?> f : futures)
+                    {
+                        f.cancel(false);
+                    }
+                }
+            }
+
+            int finished = alreadySynced + done.get();
+            if (stopRequested)
+            {
+                saveProgress("2", "已手动停止，已完成 " + finished + "/" + total + " 个纪年", total, finished, contentCount.get());
+            }
+            else if (firstError.get() != null)
+            {
+                saveProgress("2", "同步失败：" + firstError.get() + "，已完成 " + finished + "/" + total
+                        + " 个纪年，可重新开始继续", total, finished, contentCount.get());
+            }
+            else
+            {
+                saveProgress("0", "全部完成，共 " + total + " 个纪年、" + contentMapper.countContents() + " 段正文",
+                        total, total, contentMapper.countContents());
+            }
+        }
+        catch (InterruptedException ie)
+        {
+            Thread.currentThread().interrupt();
+            saveState("2", "同步被中断，可重新开始继续");
         }
         catch (Exception e)
         {
@@ -156,6 +250,10 @@ public class TjSyncServiceImpl implements ITjSyncService
         }
         finally
         {
+            if (pool != null)
+            {
+                pool.shutdownNow();
+            }
             running.set(false);
         }
     }
@@ -241,8 +339,12 @@ public class TjSyncServiceImpl implements ITjSyncService
         reign.setSortOrder(sort);
     }
 
-    /** 同步单个纪年的正文段落 */
-    private void syncReign(TjReign reign) throws Exception
+    /**
+     * 同步单个纪年的正文段落
+     *
+     * @return 正文行数净增量（新增 - 删除），用于进度计数
+     */
+    private int syncReign(TjReign reign) throws Exception
     {
         JSONObject payload = fetchJson("/api/reign?reign_tongjian_id=" + reign.getTongjianId());
         JSONObject data = payload.getJSONObject("data");
@@ -269,12 +371,14 @@ public class TjSyncServiceImpl implements ITjSyncService
                 items.add(item);
             }
         }
+        int removed = 0;
         if (!items.isEmpty())
         {
-            contentMapper.deleteByReignId(reign.getReignId());
+            removed = contentMapper.deleteByReignId(reign.getReignId());
             contentMapper.insertContentBatch(items);
         }
         catalogMapper.markReignSynced(reign.getReignId());
+        return items.size() - removed;
     }
 
     /** 提取注释（胡注/陈注）为 JSON 数组 */
@@ -365,7 +469,7 @@ public class TjSyncServiceImpl implements ITjSyncService
         return text.replaceFirst("^\\s*\\d+\\s*", "").trim();
     }
 
-    /** 限速 + 重试 + 429 退避的 JSON 请求 */
+    /** 限速 + 重试 + 429 退避的 JSON 请求（多线程共享全局限速器） */
     private JSONObject fetchJson(String path) throws Exception
     {
         Exception lastError = null;
@@ -377,7 +481,7 @@ public class TjSyncServiceImpl implements ITjSyncService
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(BASE_URL + path))
                         .header("Accept", "application/json")
-                        .header("User-Agent", "history-book/1.0 (+local sync)")
+                        .header("User-Agent", USER_AGENT)
                         .timeout(Duration.ofSeconds(30))
                         .GET()
                         .build();
@@ -389,13 +493,22 @@ public class TjSyncServiceImpl implements ITjSyncService
                     {
                         throw new IllegalStateException("接口返回格式异常: " + path);
                     }
+                    // 成功一次就把自适应间隔缓慢回落（每次 -50ms），直到下限；429 暂停时长复位
+                    intervalMs = Math.max(MIN_INTERVAL_MS, intervalMs - 50L);
+                    holdMs = 15000L;
                     return json;
                 }
                 if (response.statusCode() == 429)
                 {
-                    long wait = parseRetryAfter(response.headers().firstValue("Retry-After").orElse(null));
-                    log.warn("读通鉴同步触发限流，等待 {} 秒", wait / 1000);
-                    Thread.sleep(wait);
+                    // 源站按 UA/来源限流且通常不带 Retry-After：暂停时长指数增长，避免在封禁窗口内反复空转
+                    long wait = response.headers().firstValue("Retry-After").map(h -> parseRetryAfter(h)).orElse(holdMs);
+                    holdMs = Math.min(120000L, holdMs * 2);
+                    // 自适应加倍请求间隔，避免反复触发限流
+                    intervalMs = Math.min(MAX_INTERVAL_MS, Math.max(intervalMs * 2, 1000L));
+                    log.warn("读通鉴同步触发限流，全局暂停 {} 秒，请求间隔调整为 {} 毫秒", wait / 1000, intervalMs);
+                    // 全局暂停：所有并发线程的下一次请求都会等到该时刻之后
+                    globalHoldUntil = Math.max(globalHoldUntil, System.currentTimeMillis() + wait);
+                    lastError = new IllegalStateException("HTTP 429 限流");
                 }
                 else
                 {
@@ -420,13 +533,17 @@ public class TjSyncServiceImpl implements ITjSyncService
         throw new IllegalStateException("请求失败: " + path + " - " + lastError);
     }
 
-    /** 保证两次请求之间至少间隔 MIN_INTERVAL_MS */
-    private void pace() throws InterruptedException
+    /**
+     * 全局限速器（线程安全）：保证所有线程合并计算后，两次请求至少间隔 intervalMs（自适应），
+     * 且 429 限流期间（globalHoldUntil 之前）任何线程都不会发出请求。
+     */
+    private synchronized void pace() throws InterruptedException
     {
-        long elapsed = System.currentTimeMillis() - lastRequestAt;
-        if (elapsed < MIN_INTERVAL_MS)
+        long now = System.currentTimeMillis();
+        long wait = Math.max(lastRequestAt + intervalMs, globalHoldUntil) - now;
+        if (wait > 0)
         {
-            Thread.sleep(MIN_INTERVAL_MS - elapsed);
+            Thread.sleep(wait);
         }
         lastRequestAt = System.currentTimeMillis();
     }
@@ -449,10 +566,27 @@ public class TjSyncServiceImpl implements ITjSyncService
 
     private void saveState(String status, String message)
     {
+        saveProgress(status, message, catalogMapper.countReigns(), catalogMapper.countSyncedReigns(), contentMapper.countContents());
+    }
+
+    /** 进度落库（带节流）：高频进度更新最多每 STATE_SAVE_INTERVAL_MS 写一次状态表 */
+    private void saveProgressThrottled(String status, String message, int total, int completed, int contents)
+    {
+        long now = System.currentTimeMillis();
+        if (now - lastStateSaveAt < STATE_SAVE_INTERVAL_MS)
+        {
+            return;
+        }
+        lastStateSaveAt = now;
+        saveProgress(status, message, total, completed, contents);
+    }
+
+    private synchronized void saveProgress(String status, String message, int total, int completed, int contents)
+    {
         TjSyncState state = new TjSyncState();
-        state.setTotalReigns(catalogMapper.countReigns());
-        state.setCompletedReigns(catalogMapper.countSyncedReigns());
-        state.setContentCount(contentMapper.countContents());
+        state.setTotalReigns(total);
+        state.setCompletedReigns(completed);
+        state.setContentCount(contents);
         state.setStatus(status);
         state.setMessage(message != null && message.length() > 480 ? message.substring(0, 480) : message);
         if (syncStateMapper.selectState() == null)

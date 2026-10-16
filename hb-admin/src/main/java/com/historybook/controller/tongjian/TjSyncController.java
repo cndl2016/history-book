@@ -46,7 +46,7 @@ public class TjSyncController extends BaseController
     public AjaxResult start()
     {
         boolean ok = syncService.start();
-        return ok ? AjaxResult.success("同步已启动，约每5秒导入一个纪年，可离开页面稍后查看")
+        return ok ? AjaxResult.success("同步已启动，多线程导入中，可离开页面稍后查看")
                   : AjaxResult.error("同步正在运行中");
     }
 
