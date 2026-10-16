@@ -1,6 +1,10 @@
 # 后端
 **/target/
-db/
+db/*.mv.db
+!db/history-book.mv.db
+db/*.trace.db
+db/*.lock.db
+db/*.sql
 logs/
 *.log
 

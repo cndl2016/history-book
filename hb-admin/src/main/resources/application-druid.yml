@@ -23,10 +23,10 @@ spring:
                 filters: stat,slf4j
                 connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
             datasource:
-                # 主库数据源（H2 嵌入式文件库，首次启动自动执行 sql/schema.sql 与 sql/data.sql 初始化）
-                # 使用绝对路径，避免工作目录不同导致在别处重复创建 db（IDEA 启动工作目录为项目根，命令行在 hb-admin 下运行会生成 hb-admin/db）
+                # 主库数据源（本地 H2 服务器模式：先运行 db/start-h2.bat 启动数据库，再启动后端）
+                # 数据库文件固定在项目根 db/history-book.mv.db，由 H2 服务器进程统一管理，数据持久保存
                 master:
                     driver-class-name: org.h2.Driver
-                    url: jdbc:h2:file:D:/project/history-book/db/history-book;AUTO_SERVER=TRUE
+                    url: jdbc:h2:tcp://localhost:9092/./history-book
                     username: sa
                     password: ''

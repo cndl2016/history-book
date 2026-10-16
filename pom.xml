@@ -28,12 +28,21 @@
         <poi.version>5.2.1</poi.version>
         <jwt.version>0.9.1</jwt.version>
         <spring.boot.version>2.6.15</spring.boot.version>
+        <!-- H2 数据库版本：root 显式锁定，覆盖 spring-boot-dependencies BOM 管理的版本，保证 hb-admin 传递依赖也使用 2.2.224 -->
+        <h2.version>2.2.224</h2.version>
         <lombok.version>1.18.34</lombok.version>
     </properties>
 
     <!-- 依赖声明 -->
     <dependencyManagement>
         <dependencies>
+
+            <!-- H2 数据库驱动：显式锁定 2.2.224，必须放在 spring-boot-dependencies 之前才能覆盖 BOM 管理的版本 -->
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+            </dependency>
 
             <!-- SpringBoot的依赖配置-->
             <dependency>
