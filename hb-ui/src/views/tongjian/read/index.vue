@@ -117,7 +117,7 @@
     <!-- 古本查看器 -->
     <GubenViewer v-model:visible="gubenVisible" :paragraph="gubenParagraph" />
     <!-- 沙盘态势 -->
-    <SandboxViewer v-model:visible="sandboxVisible" :content-id="sandboxContentId" />
+    <SandboxViewer v-model:visible="sandboxVisible" :content-id="sandboxContentId" @locate="onSandboxLocate" />
     <!-- 标签关联段落 -->
     <TagDialog v-model="tagDialogVisible" v-model:tag="currentTag" @locate="locateParagraph" />
   </div>
@@ -312,6 +312,12 @@ function openGuben(item) {
 function openSandbox(item) {
   sandboxContentId.value = item.contentId
   sandboxVisible.value = true
+}
+
+/** 沙盘里定位关联段落：关闭沙盘，复用标签定位逻辑（支持跨纪年） */
+function onSandboxLocate(item) {
+  sandboxVisible.value = false
+  locateParagraph(item)
 }
 
 onMounted(() => {

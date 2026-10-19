@@ -1,4 +1,4 @@
-<!-- 读通鉴-沙盘态势：段落地名地图（Leaflet + CHGIS 点位） -->
+<!-- 读通鉴-沙盘态势：段落地名地图（Leaflet + CHGIS 点位）+ 地点介绍 + 关联文档 -->
 <template>
   <teleport to="body">
     <div v-if="visible" class="sandbox-viewer">
@@ -16,28 +16,84 @@
         </div>
       </div>
 
-      <!-- 地图区 -->
+      <!-- 地点介绍 -->
+      <div v-if="selected" class="sv-intro">
+        <span class="sv-intro-name">{{ selected.name }}<span class="sv-intro-type">（{{ selected.typeCh || '地名' }}）</span></span>
+        <span class="sv-intro-desc">{{ introText }}</span>
+      </div>
+
+      <!-- 主区：左侧关联文档 + 右侧地图 -->
       <div class="sv-stage">
-        <div ref="mapRef" class="sv-map"></div>
-        <div v-if="loading" class="sv-status">点位加载中…</div>
-        <div v-else-if="errorMsg" class="sv-status">{{ errorMsg }}</div>
-        <!-- 点位清单 -->
-        <div v-if="!loading && places.length > 0" class="sv-list" :class="{ collapsed: listCollapsed }">
-          <div class="sv-list-head" @click="listCollapsed = !listCollapsed">
-            <span>地名 {{ places.length }} 处</span>
-            <span class="sv-list-toggle">{{ listCollapsed ? '展开' : '收起' }}</span>
+        <!-- 关联文档 -->
+        <div class="sv-docs" :class="{ collapsed: docsCollapsed }">
+          <div class="sv-docs-head" @click="docsCollapsed = !docsCollapsed">
+            <span>关联文档<template v-if="selected"> · {{ selected.tag }}</template></span>
+            <span class="sv-docs-toggle">{{ docsCollapsed ? '展开' : '收起' }}</span>
           </div>
-          <el-scrollbar v-show="!listCollapsed" class="sv-list-body">
-            <div
-              v-for="(p, i) in places"
-              :key="i"
-              class="sv-place"
-              @click="focusPlace(p)"
-            >
-              <span class="sv-place-name">{{ p.name }}</span>
-              <span class="sv-place-meta">{{ p.typeCh }}<template v-if="p.presLoc"> · {{ p.presLoc }}</template></span>
+          <template v-if="!docsCollapsed">
+            <el-scrollbar class="sv-docs-body" v-loading="relatedLoading">
+              <div v-if="relatedList.length > 0">
+                <div
+                  v-for="item in relatedList"
+                  :key="item.contentId"
+                  class="sv-doc"
+                  @click="locateRelated(item)"
+                >
+                  <div class="sv-doc-crumb">
+                    <span class="sv-doc-volume">{{ item.volumeTitle }}</span>
+                    <span class="sv-doc-sep">/</span>
+                    <span>{{ item.reignTitle }}</span>
+                    <span class="sv-doc-sep">/</span>
+                    <span class="sv-doc-number">第 {{ item.number }} 段</span>
+                    <span class="sv-doc-locate">定位 ›</span>
+                  </div>
+                  <div class="sv-doc-text">
+                    <template v-for="(seg, i) in splitByTag(item.original || item.simplified || '')" :key="i">
+                      <mark v-if="seg.hit" class="sv-doc-mark">{{ seg.text }}</mark>
+                      <span v-else>{{ seg.text }}</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <div v-else-if="!relatedLoading" class="sv-docs-empty">没有找到关联段落</div>
+            </el-scrollbar>
+            <div class="sv-docs-foot">
+              <pagination
+                v-show="relatedTotal > 0"
+                :total="relatedTotal"
+                v-model:page="relatedQuery.pageNum"
+                v-model:limit="relatedQuery.pageSize"
+                layout="prev, pager, next"
+                @pagination="loadRelated"
+              />
             </div>
-          </el-scrollbar>
+          </template>
+        </div>
+
+        <!-- 地图 -->
+        <div class="sv-map-wrap">
+          <div ref="mapRef" class="sv-map"></div>
+          <div v-if="loading" class="sv-status">点位加载中…</div>
+          <div v-else-if="errorMsg" class="sv-status">{{ errorMsg }}</div>
+          <!-- 点位清单 -->
+          <div v-if="!loading && places.length > 0" class="sv-list" :class="{ collapsed: listCollapsed }">
+            <div class="sv-list-head" @click="listCollapsed = !listCollapsed">
+              <span>地名 {{ places.length }} 处</span>
+              <span class="sv-list-toggle">{{ listCollapsed ? '展开' : '收起' }}</span>
+            </div>
+            <el-scrollbar v-show="!listCollapsed" class="sv-list-body">
+              <div
+                v-for="(p, i) in places"
+                :key="i"
+                class="sv-place"
+                :class="{ active: selected === p }"
+                @click="selectPlace(p)"
+              >
+                <span class="sv-place-name">{{ p.name }}</span>
+                <span class="sv-place-meta">{{ p.typeCh }}<template v-if="p.presLoc"> · {{ p.presLoc }}</template></span>
+              </div>
+            </el-scrollbar>
+          </div>
         </div>
       </div>
 
@@ -52,7 +108,7 @@
 
 <script setup>
 import { Aim, FullScreen, Close } from '@element-plus/icons-vue'
-import { getParagraphSandbox } from '@/api/tongjian'
+import { getParagraphSandbox, listContentByTag } from '@/api/tongjian'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -60,7 +116,7 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   contentId: { type: [String, Number], default: null }
 })
-const emit = defineEmits(['update:visible'])
+const emit = defineEmits(['update:visible', 'locate'])
 
 const mapRef = ref(null)
 const loading = ref(false)
@@ -69,6 +125,16 @@ const places = ref([])
 const year = ref(null)
 const reignTitle = ref('')
 const listCollapsed = ref(false)
+
+// 当前选中地名
+const selected = ref(null)
+
+// 关联文档
+const docsCollapsed = ref(false)
+const relatedLoading = ref(false)
+const relatedList = ref([])
+const relatedTotal = ref(0)
+const relatedQuery = ref({ pageNum: 1, pageSize: 10 })
 
 let map = null
 let markerLayer = null
@@ -96,6 +162,23 @@ const TILE_PROVIDERS = [
 ]
 
 const tileNote = ref('')
+
+/** 地点介绍文案：由字典字段组合（今址 + 年代 + 关联段数） */
+const introText = computed(() => {
+  const p = selected.value
+  if (!p) return ''
+  const parts = []
+  if (p.presLoc) {
+    parts.push(p.presLoc.endsWith('。') ? p.presLoc : p.presLoc + '。')
+  }
+  if (p.begYr != null || p.endYr != null) {
+    const beg = p.begYr != null ? formatYear(p.begYr) : '不详'
+    const end = p.endYr != null ? formatYear(p.endYr) : '不详'
+    parts.push(`年代：${beg} 至 ${end}。`)
+  }
+  parts.push(`关联段落 ${relatedTotal.value} 段。`)
+  return parts.join(' ')
+})
 
 /** -403 -> 公元前403年；960 -> 公元960年 */
 function formatYear(y) {
@@ -125,6 +208,10 @@ async function openViewer() {
   year.value = null
   reignTitle.value = ''
   listCollapsed.value = false
+  docsCollapsed.value = false
+  selected.value = null
+  relatedList.value = []
+  relatedTotal.value = 0
   try {
     const res = await getParagraphSandbox(props.contentId)
     const data = res.data || {}
@@ -142,10 +229,54 @@ async function openViewer() {
     // 先探测哪个底图源可达，再渲染地图
     const providerIdx = await probeProvider()
     renderMap(providerIdx)
+    // 默认选中第一个地名：顶部介绍 + 关联文档
+    selectPlace(places.value[0], { fly: false })
   } catch (e) {
     loading.value = false
     errorMsg.value = '沙盘数据加载失败'
   }
+}
+
+/** 选中地名：更新介绍、关联文档，可选飞到点位 */
+function selectPlace(p, opts = {}) {
+  const { fly = true } = opts
+  if (!p) return
+  selected.value = p
+  loadRelated()
+  if (fly) {
+    focusPlace(p)
+  }
+}
+
+/** 加载选中地名的关联段落 */
+function loadRelated() {
+  const p = selected.value
+  if (!p) return
+  relatedLoading.value = true
+  listContentByTag({ tag: p.tag, ...relatedQuery.value }).then(res => {
+    relatedList.value = res.rows || []
+    relatedTotal.value = res.total || 0
+    relatedLoading.value = false
+  }).catch(() => { relatedLoading.value = false })
+}
+
+/** 定位到关联段落：通知父组件跳转并关闭沙盘 */
+function locateRelated(item) {
+  emit('locate', item)
+}
+
+/** 把正文按当前选中地名的标签拆分，用于高亮 */
+function splitByTag(text) {
+  const tag = selected.value ? selected.value.tag : ''
+  if (!text) return []
+  if (!tag || !text.includes(tag)) return [{ text, hit: false }]
+  const segs = []
+  const parts = text.split(tag)
+  parts.forEach((p, i) => {
+    if (p) segs.push({ text: p, hit: false })
+    if (i < parts.length - 1) segs.push({ text: tag, hit: true })
+  })
+  return segs
 }
 
 function renderMap(providerIdx) {
@@ -170,6 +301,7 @@ function renderMap(providerIdx) {
       iconAnchor: [7, 7]
     })
     const marker = L.marker(displayCoord(p), { icon })
+    marker.on('click', () => selectPlace(p, { fly: false }))
     const years = (p.begYr != null || p.endYr != null)
       ? `<div class="sv-pop-row">年代：${p.begYr != null ? formatYear(p.begYr) : '？'} — ${p.endYr != null ? formatYear(p.endYr) : '？'}</div>`
       : ''
@@ -277,8 +409,16 @@ function focusPlace(p) {
   p._marker && p._marker.openPopup()
 }
 
+function toggleFullscreen() {
+  const el = document.querySelector('.sandbox-viewer')
+  if (!document.fullscreenElement) {
+    el && el.requestFullscreen && el.requestFullscreen()
+  } else {
+    document.exitFullscreen()
+  }
+}
+
 /* ===== WGS84 -> GCJ-02（火星坐标系）转换 ===== */
-const X_PI = Math.PI * 3000.0 / 180.0
 const GCJ_A = 6378245.0
 const GCJ_EE = 0.00669342162296594323
 
@@ -309,15 +449,6 @@ function wgs84ToGcj02(lng, lat) {
   dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI)
   dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * Math.PI)
   return [lng + dLng, lat + dLat]
-}
-
-function toggleFullscreen() {
-  const el = document.querySelector('.sandbox-viewer')
-  if (!document.fullscreenElement) {
-    el && el.requestFullscreen && el.requestFullscreen()
-  } else {
-    document.exitFullscreen()
-  }
 }
 
 onBeforeUnmount(destroyMap)
@@ -390,9 +521,164 @@ onBeforeUnmount(destroyMap)
   color: #fff;
 }
 
+/* 地点介绍条 */
+.sv-intro {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fbf6ec;
+  border-bottom: 1px solid #eadfc8;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.sv-intro-name {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'Songti SC', 'SimSun', serif;
+  color: #92400e;
+  flex-shrink: 0;
+}
+.sv-intro-type {
+  font-size: 12px;
+  font-weight: 400;
+  color: #b45309;
+}
+.sv-intro-desc {
+  font-size: 12.5px;
+  color: #78716c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 主区 */
 .sv-stage {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* 左侧关联文档 */
+.sv-docs {
+  width: 330px;
+  flex-shrink: 0;
+  background: #f6f4ef;
+  border-right: 1px solid #e9e4da;
+  display: flex;
+  flex-direction: column;
+}
+.sv-docs.collapsed {
+  width: auto;
+}
+.sv-docs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #44403c;
+  font-family: 'Songti SC', 'SimSun', serif;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #ece5d6;
+  background: #fbf9f4;
+  white-space: nowrap;
+}
+.sv-docs-toggle {
+  font-size: 12px;
+  font-weight: 400;
+  color: #a8a29e;
+}
+.sv-docs-body {
+  flex: 1;
+  padding: 10px;
+}
+.sv-docs-empty {
+  padding: 30px 0;
+  text-align: center;
+  font-size: 13px;
+  color: #a8a29e;
+}
+.sv-doc {
+  border: 1px solid #e9e4da;
+  border-radius: 6px;
+  background: #fdfcfa;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.sv-doc:hover {
+  border-color: #d6c9b4;
+  box-shadow: 0 4px 16px rgba(120, 100, 70, .1);
+}
+.sv-doc:hover .sv-doc-locate {
+  color: #b45309;
+}
+.sv-doc-crumb {
+  font-size: 12px;
+  color: #78716c;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Songti SC', 'SimSun', serif;
+  flex-wrap: wrap;
+}
+.sv-doc-volume {
+  color: #b45309;
+}
+.sv-doc-sep {
+  color: #d9d0bf;
+}
+.sv-doc-number {
+  color: #44403c;
+  background: #f1ede5;
+  border-radius: 3px;
+  padding: 0 6px;
+}
+.sv-doc-locate {
+  margin-left: auto;
+  font-size: 12px;
+  color: #c7bfb2;
+  transition: color .15s;
+}
+.sv-doc-text {
+  margin-top: 6px;
+  font-family: 'Songti SC', 'SimSun', serif;
+  font-size: 13.5px;
+  line-height: 1.9;
+  color: #292524;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sv-doc-mark {
+  background: rgba(180, 83, 9, .16);
+  color: #92400e;
+  padding: 0 2px;
+  border-radius: 2px;
+  border-bottom: 1px solid rgba(180, 83, 9, .4);
+}
+.sv-docs-foot {
+  padding: 6px 10px;
+  border-top: 1px solid #ece5d6;
+  background: #fbf9f4;
+}
+.sv-docs-foot :deep(.pagination-container) {
+  position: static;
+  height: auto;
+  margin-top: 0;
+  padding: 0;
+  justify-content: center;
+}
+
+/* 地图 */
+.sv-map-wrap {
   position: relative;
   flex: 1;
+  min-width: 0;
 }
 .sv-map {
   position: absolute;
@@ -459,6 +745,11 @@ onBeforeUnmount(destroyMap)
 }
 .sv-place:hover {
   background: #f6f1e7;
+}
+.sv-place.active {
+  background: rgba(180, 83, 9, .08);
+  border-left: 3px solid #b45309;
+  padding-left: 9px;
 }
 .sv-place-name {
   display: block;
