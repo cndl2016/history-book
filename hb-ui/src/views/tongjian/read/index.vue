@@ -79,6 +79,7 @@
                   <el-icon class="meta-icon" @click="markProgress(item)"><Flag /></el-icon>
                 </el-tooltip>
                 <span class="guben-btn" @click="openGuben(item)">古本</span>
+                <span v-if="item.sandboxable" class="sandbox-btn" @click="openSandbox(item)">沙盘</span>
                 <template v-if="item.tags">
                   <span class="meta-sep">标签</span>
                   <span
@@ -115,6 +116,8 @@
 
     <!-- 古本查看器 -->
     <GubenViewer v-model:visible="gubenVisible" :paragraph="gubenParagraph" />
+    <!-- 沙盘态势 -->
+    <SandboxViewer v-model:visible="sandboxVisible" :content-id="sandboxContentId" />
     <!-- 标签关联段落 -->
     <TagDialog v-model="tagDialogVisible" v-model:tag="currentTag" @locate="locateParagraph" />
   </div>
@@ -124,6 +127,7 @@
 import { getCatalogTree, getReign, listByReign, addFavorite, delFavorite, recordHistory } from '@/api/tongjian'
 import { Star, StarFilled, Flag } from '@element-plus/icons-vue'
 import GubenViewer from './GubenViewer.vue'
+import SandboxViewer from './SandboxViewer.vue'
 import TagDialog from './TagDialog.vue'
 
 const route = useRoute()
@@ -147,6 +151,10 @@ const showNotes = ref(true)
 // 古本查看器
 const gubenVisible = ref(false)
 const gubenParagraph = ref(null)
+
+// 沙盘态势
+const sandboxVisible = ref(false)
+const sandboxContentId = ref(null)
 
 // 标签关联段落对话框
 const tagDialogVisible = ref(false)
@@ -298,6 +306,12 @@ function openGuben(item) {
     selectedText: item.original || item.simplified || ''
   }
   gubenVisible.value = true
+}
+
+/** 打开沙盘态势：按段落ID取地名点位 */
+function openSandbox(item) {
+  sandboxContentId.value = item.contentId
+  sandboxVisible.value = true
 }
 
 onMounted(() => {
@@ -510,6 +524,20 @@ onMounted(() => {
 }
 .guben-btn:hover {
   background: #b45309;
+  color: #fff;
+}
+.sandbox-btn {
+  font-size: 12px;
+  color: #1c4ed8;
+  border: 1px solid #1c4ed8;
+  border-radius: 3px;
+  padding: 0 8px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 18px;
+}
+.sandbox-btn:hover {
+  background: #1c4ed8;
   color: #fff;
 }
 .tag-chip {

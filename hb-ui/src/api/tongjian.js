@@ -142,6 +142,15 @@ export function getGubenCrawlStatus() {
   })
 }
 
+// 段落沙盘态势（地名点位）
+export function getParagraphSandbox(contentId) {
+  return request({
+    url: '/tongjian/sandbox/paragraph',
+    method: 'get',
+    params: { contentId }
+  })
+}
+
 // 启动古本回填
 export function startGubenCrawl() {
   return request({

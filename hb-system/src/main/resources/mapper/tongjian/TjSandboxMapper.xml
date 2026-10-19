@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.historybook.system.mapper.TjSandboxMapper">
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjPlaceDict" id="TjPlaceDictResult">
+		<id     property="placeId"   column="place_id"   />
+		<result property="nameFt"    column="name_ft"    />
+		<result property="nameCh"    column="name_ch"    />
+		<result property="namePy"    column="name_py"    />
+		<result property="xCoor"     column="x_coor"     />
+		<result property="yCoor"     column="y_coor"     />
+		<result property="typeCh"    column="type_ch"    />
+		<result property="presLoc"   column="pres_loc"   />
+		<result property="begYr"     column="beg_yr"     />
+		<result property="endYr"     column="end_yr"     />
+		<result property="source"    column="source"     />
+	</resultMap>
+
+	<resultMap type="com.historybook.system.entity.tongjian.TjReign" id="TjReignResult">
+		<id     property="reignId"     column="reign_id"     />
+		<result property="tongjianId"  column="tongjian_id"  />
+		<result property="volumeId"    column="volume_id"    />
+		<result property="emperorName" column="emperor_name" />
+		<result property="reignName"   column="reign_name"   />
+		<result property="yearAnno"    column="year_anno"    />
+		<result property="yearInt"     column="year_int"     />
+	</resultMap>
+
+	<select id="selectParagraphTags" resultType="string">
+		select tags from tj_content where content_id = #{contentId}
+	</select>
+
+	<select id="selectReignByContentId" resultMap="TjReignResult">
+		select r.reign_id, r.tongjian_id, r.volume_id, r.emperor_name, r.reign_name, r.year_anno, r.year_int
+		from tj_reign r
+		join tj_content c on c.reign_id = r.reign_id
+		where c.content_id = #{contentId}
+	</select>
+
+	<!-- 精确匹配（简/繁），或通名 + 1~2 字政区后缀的前缀匹配；后缀合法性由服务层过滤 -->
+	<select id="selectPlacesByName" resultMap="TjPlaceDictResult">
+		select place_id, name_ft, name_ch, name_py, x_coor, y_coor, type_ch, pres_loc, beg_yr, end_yr, source
+		from tj_place_dict
+		where name_ch = #{name}
+		   or name_ft = #{name}
+		   or (length(name_ch) between length(#{name}) + 1 and length(#{name}) + 2 and name_ch like concat(#{name}, '%'))
+		   or (length(name_ft) between length(#{name}) + 1 and length(#{name}) + 2 and name_ft like concat(#{name}, '%'))
+	</select>
+
+	<select id="selectAllDictNames" resultType="string">
+		select name_ft from tj_place_dict where name_ft is not null
+		union
+		select name_ch from tj_place_dict where name_ch is not null
+	</select>
+
+</mapper>

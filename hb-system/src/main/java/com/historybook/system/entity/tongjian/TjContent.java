@@ -54,6 +54,9 @@ public class TjContent extends BaseEntity
     /** 当前用户是否已收藏（非表字段） */
     private Boolean favored;
 
+    /** 是否有可上图的地名（非表字段，有则显示沙盘按钮） */
+    private Boolean sandboxable;
+
     /** 所属纪年显示名（关联查询） */
     private String reignTitle;
 
